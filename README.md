@@ -2,7 +2,8 @@ Hey everyone! Here's a cool extension I made. A friend gave me the idea, so I de
 
 some examples of it working
 
-![Untitledvideo-MadewithClipchamp2-ezgif com-video-to-gif-converter](https://github.com/user-attachments/assets/4270576b-e5d6-47e4-9a23-d7231f6779f4)
+![-MadewithClipchamp3-ezgif com-video-to-gif-converter](https://github.com/user-attachments/assets/09c7ae64-b81d-4061-a9d2-e9556f546749)
+
 
 
 Below are some simple screenshots to show how to install it, just in case you're not familiar with extensions.
