@@ -12,4 +12,4 @@ Below are some simple screenshots to show how to install it, just in case you're
 ![Screenshot 2025-06-09 155946](https://github.com/user-attachments/assets/3457a428-8f53-4675-bb33-437b863ae398)
 ![Screenshot 2025-06-09 160000](https://github.com/user-attachments/assets/71b961d0-63b3-4d45-950e-a3266c6b837b)
 
-just paste the link this link into that little box https://github.com/subzero5544/favorites-carousel.git
+just paste this link into that little box https://github.com/subzero5544/favorites-carousel.git
