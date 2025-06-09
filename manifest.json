@@ -1,0 +1,12 @@
+{
+    "display_name": "Favorites Carousel",
+    "loading_order": 1,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "Custom",
+    "version": "0.1.0",
+    "homePage": "",
+    "auto_update": true
+}

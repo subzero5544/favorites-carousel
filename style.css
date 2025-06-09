@@ -1,0 +1,63 @@
+
+/* --- START OF FINAL style.css --- */
+
+#favorites_carousel_wrapper {
+    position: relative;
+    /* Padding is now conditional, see .with-arrows rule below */
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex: 1 1 auto; /* let it grow */
+    min-width: 0;
+}
+
+/* when arrows are shown we add horizontal padding to avoid overlap */
+#favorites_carousel_wrapper.with-arrows {
+    padding: 0 35px;
+}
+
+#favorites_carousel {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-behavior: smooth;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+#favorites_carousel.desktop {
+    -ms-overflow-style: none; /* IE/Edge */
+    scrollbar-width: none;    /* Firefox */
+}
+
+#favorites_carousel.desktop::-webkit-scrollbar {
+    display: none;            /* Chrome/Safari */
+}
+
+#favorites_carousel .avatar {
+    flex: 0 0 auto;
+    margin: calc(var(--avatar-base-border-radius));
+}
+
+.carousel-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 8px 12px;
+    cursor: pointer;
+    z-index: 10;
+    user-select: none;
+    color: var(--main-font-color, inherit);
+    /* Arrows are hidden by default, JS will show them */
+    display: none;
+}
+
+#favorites_carousel_left  { left: 0;  }
+#favorites_carousel_right { right: 0; }
+
+.carousel-arrow.disabled {
+    opacity: .3;
+    pointer-events: none;
+}
