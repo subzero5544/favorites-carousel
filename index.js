@@ -10,9 +10,28 @@ import {
     eventSource,
     event_types,
     getEntitiesList as exportedGetEntitiesList,
+    getThumbnailUrl,
+    selectCharacterById,
+    getCharacters,
 } from '/script.js';
-import { isMobile } from '/scripts/RossAscends-mods.js';
+import { getParsedUA } from '/scripts/RossAscends-mods.js';
+import { getGroupAvatar, openGroupById } from '/scripts/group-chats.js';
+import { debounce } from '/scripts/utils.js';
+
+/**
+ * @typedef {object} Entity
+ * @property {number} id
+ * @property {object} item
+ * @property {string} type
+ */
+
+/**
+ * @returns {Entity[]}
+ */
 const getEntitiesList = exportedGetEntitiesList || window.getEntitiesList;
+
+// JQuery
+const $ = window.jQuery;
 
 // ---------------------------------------------------------------------------
 // State variables
@@ -47,7 +66,7 @@ function ensureHtml() {
 function favsToHotswap() {
     const OLD_HOTSWAP_ID = 'HotSwapWrapper';
     const entities = getEntitiesList ? getEntitiesList({ doFilter: false }) : [];
-    const container = window.$('#favorites_carousel');
+    const container = $('#favorites_carousel');
     const FAVS_LIMIT = 999;
     const favs = entities.filter((x) => x.item.fav || x.item.fav == 'true').slice(0, FAVS_LIMIT);
     const oldHotswap = document.getElementById(OLD_HOTSWAP_ID);
@@ -61,30 +80,22 @@ function favsToHotswap() {
 
     if (oldHotswap) oldHotswap.style.display = 'none';
 
-    const $carouselEl = window.$('#favorites_carousel');
+    const $carouselEl = $('#favorites_carousel');
     const prevRatio = favoritesCarouselScrollRatio;
 
-    window.buildAvatarList(container, favs, { interactable: true, highlightFavs: false });
+        buildExtensionAvatarList(container, favs);
     container.find('.avatar').off('click.carousel').on('click.carousel', function () {
-        const id = Number(window.$(this).attr('data-chid'));
-        if (typeof window.selectCharacterById === 'function') {
-            window.selectCharacterById(String(id));
+        const chid = $(this).attr('data-chid');
+        const gid = $(this).attr('data-gid');
+
+        if (gid !== undefined) {
+            openGroupById(gid);
+        } else if (chid !== undefined) {
+            selectCharacterById(String(chid));
         }
     });
 
-    const $imgs = window.$('#favorites_carousel img');
-    $imgs.off('.thumbFallback').on('error.thumbFallback', function () {
-        const $div = window.$(this).closest('.avatar');
-        const idx = Number($div.data('id'));
-        const ch = favs[idx]?.item;
-        if (!ch) return;
-        let alt = ch.avatar || ch.avatar_url || ch.img || '';
-        if (alt && !/^\//.test(alt) && !/^[a-z]+:\/\//i.test(alt)) {
-            alt = `/characters/${encodeURIComponent(alt)}`;
-        }
-        this.src = (alt && this.src !== alt) ? alt : '/img/ai4.png';
-    });
-
+    const $imgs = $('#favorites_carousel img');
     $imgs.off('load.updateArrow').on('load.updateArrow', setupFavoritesCarousel);
     setupFavoritesCarousel();
 
@@ -111,10 +122,10 @@ function favsToHotswap() {
 }
 
 function setupFavoritesCarousel() {
-    const $wrapper = window.$('#favorites_carousel_wrapper');
-    const $carousel = window.$('#favorites_carousel');
-    const $left = window.$('#favorites_carousel_left');
-    const $right = window.$('#favorites_carousel_right');
+    const $wrapper = $('#favorites_carousel_wrapper');
+    const $carousel = $('#favorites_carousel');
+    const $left = $('#favorites_carousel_left');
+    const $right = $('#favorites_carousel_right');
 
     const mobileEnv = isMobile();
     $carousel.toggleClass('mobile', mobileEnv).toggleClass('desktop', !mobileEnv);
@@ -145,7 +156,7 @@ function setupFavoritesCarousel() {
         $carousel.animate({ scrollLeft: $carousel.scrollLeft() + scrollStep }, 200);
     });
 
-    window.$(window).off('resize.favCarousel').on('resize.favCarousel', updateArrowVisibility);
+    $(window).off('resize.favCarousel').on('resize.favCarousel', updateArrowVisibility);
     $carousel.off('scroll.favCarousel').on('scroll.favCarousel', updateArrowVisibility);
     $carousel.off('scroll.favCarouselSave').on('scroll.favCarouselSave', () => {
         if (favoritesCarouselRestoring) return;
@@ -164,13 +175,32 @@ function setupFavoritesCarousel() {
     }
 
     $carousel.find('img').off('load.favCarousel').on('load.favCarousel', updateArrowVisibility);
+
+    // Initial pass to set arrow visibility.
     updateArrowVisibility();
+
+    /* ---------------------------------------------------------- */
+    /*  Detect missing group collage images and retry once later   */
+    /* ---------------------------------------------------------- */
+
+    if ($carousel.find('.avatar_collage img[src=""]').length) {
+        if (!setupFavoritesCarousel._retryScheduled) {
+            setupFavoritesCarousel._retryScheduled = true;
+            setTimeout(() => {
+                // Rebuild carousel once more after data likely loaded
+                favsToHotswap();
+                setupFavoritesCarousel._retryScheduled = false;
+            }, 800);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Enable / disable helpers
 // ---------------------------------------------------------------------------
 let initialTimer = null;
+let observer = null;
+
 function tryInitialBuild() {
     favsToHotswap();
     if (document.querySelector('#favorites_carousel .avatar')) {
@@ -182,22 +212,36 @@ export function enable() {
     ensureHtml();
     initialTimer = setInterval(tryInitialBuild, 300);
     setTimeout(tryInitialBuild, 100);
-    eventSource.on(event_types.CHARACTER_PAGE_LOADED, favsToHotswap);
-
-    // NEW: Listen for character edits (favoriting) to trigger an instant refresh.
     eventSource.on(event_types.CHARACTER_EDITED, favsToHotswap);
+
+    const debouncedFavsToHotswap = debounce(favsToHotswap, 100);
+    const observerConfig = { attributes: true, attributeFilter: ['class'] };
+    observer = new MutationObserver(mutations => {
+        mutations.forEach(mutation => {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                debouncedFavsToHotswap();
+            }
+        });
+    });
+
+    const observerInterval = setInterval(() => {
+        const groupTargetNode = document.querySelector('#group_favorite_button');
+        if (groupTargetNode) {
+            observer.observe(groupTargetNode, observerConfig);
+        }
+    }, 500);
 }
 
 export function disable() {
     const OLD_HOTSWAP_ID = 'HotSwapWrapper';
-    window.$('#favorites_carousel_wrapper').remove();
-    eventSource.off(event_types.CHARACTER_PAGE_LOADED, favsToHotswap);
+    $('#favorites_carousel_wrapper').remove();
+    eventSource.off(event_types.CHARACTER_EDITED, favsToHotswap);
+    if (observer) {
+        observer.disconnect();
+    }
     clearInterval(initialTimer);
     const oldHotswap = document.getElementById(OLD_HOTSWAP_ID);
     if (oldHotswap) oldHotswap.style.display = '';
-
-    // NEW: Remove the character edit listener when the extension is disabled.
-    eventSource.off(event_types.CHARACTER_EDITED, favsToHotswap);
 }
 
 enable();
@@ -205,19 +249,37 @@ enable();
 // ---------------------------------------------------------------------------
 // Fallback buildAvatarList (Corrected for /thumbnail endpoint)
 // ---------------------------------------------------------------------------
-if (typeof window.buildAvatarList === 'undefined') {
-    window.buildAvatarList = function ($container, entries) {
-        $container.empty();
-        entries.forEach(({ id, item }) => {
-            const rawFilename = item?.avatar || item?.avatar_url || item?.img || '';
-            const title = item?.name || '???';
-            const avatarUrl = rawFilename ? `/thumbnail?type=avatar&file=${encodeURIComponent(rawFilename)}` : '/img/ai4.png';
-            const $div = window.$('<div>', { class: 'avatar character_select', 'data-chid': id, title });
-            $div.append(window.$('<img>', { src: avatarUrl, alt: title }));
-            if (typeof window.selectCharacterById === 'function') {
-                $div.on('click', () => window.selectCharacterById(String(id)));
+function buildExtensionAvatarList($container, entries) {
+    $container.empty();
+    for (const { id, item, type } of entries) {
+        const isGroup = type === 'group';
+        const title = item?.name ?? '???';
+        const $div = $('<div>', { class: 'avatar character_select', title });
+
+        if (isGroup) {
+            $div.addClass('avatar_collage group_select');
+            $div.attr('data-gid', id);
+            $div.data('type', 'group');
+
+            if (Array.isArray(item.members)) {
+                $div.addClass(`collage_${item.members.length}`);
+                for (let i = 0; i < item.members.length; i++) {
+                    const member = item.members[i];
+                    const avatarUrl = getThumbnailUrl('avatar', member);
+                    $div.append($('<img>', { src: avatarUrl, alt: `img${i+1}`, class: `img_${i+1}` }));
+                }
             }
-            $container.append($div);
-        });
-    };
+        } else {
+            const avatarUrl = getThumbnailUrl('avatar', item.avatar);
+            $div.attr('data-chid', id);
+            $div.append($('<img>', { src: avatarUrl, alt: title }));
+        }
+        $container.append($div);
+    }
+}
+
+function isMobile() {
+    const mobileTypes = ['mobile', 'tablet'];
+    const parsedUA = getParsedUA?.();
+    return parsedUA?.platform?.type && mobileTypes.includes(parsedUA.platform.type);
 }

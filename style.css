@@ -22,7 +22,6 @@
     flex-wrap: nowrap;
     overflow-x: auto;
     overflow-y: hidden;
-    scroll-behavior: smooth;
     flex: 1 1 auto;
     min-width: 0;
 }
@@ -32,8 +31,9 @@
     scrollbar-width: none;    /* Firefox */
 }
 
-#favorites_carousel.desktop::-webkit-scrollbar {
-    display: none;            /* Chrome/Safari */
+#favorites_carousel.desktop::-webkit-scrollbar,
+#favorites_carousel.mobile::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
 }
 
 #favorites_carousel .avatar {
