@@ -11,11 +11,10 @@ import {
     event_types,
     getEntitiesList as exportedGetEntitiesList,
     getThumbnailUrl,
-    selectCharacterById,
-    getCharacters,
 } from '/script.js';
 import { getParsedUA } from '/scripts/RossAscends-mods.js';
-import { getGroupAvatar, openGroupById } from '/scripts/group-chats.js';
+// No direct invocation of group logic here – rely on SillyTavern's global
+// delegated handlers instead.
 import { debounce } from '/scripts/utils.js';
 
 /**
@@ -81,34 +80,29 @@ function favsToHotswap() {
     if (oldHotswap) oldHotswap.style.display = 'none';
 
     const $carouselEl = $('#favorites_carousel');
-    const prevRatio = favoritesCarouselScrollRatio;
 
-        buildExtensionAvatarList(container, favs);
-    container.find('.avatar').off('click.carousel').on('click.carousel', function () {
-        const chid = $(this).attr('data-chid');
-        const gid = $(this).attr('data-gid');
+    buildExtensionAvatarList(container, favs);
 
-        if (gid !== undefined) {
-            openGroupById(gid);
-        } else if (chid !== undefined) {
-            selectCharacterById(String(chid));
-        }
-    });
+    /* ---------------------------------------------------------- */
+    /*   Make the favourites carousel scroll infinitely (wrap)     */
+    /* ---------------------------------------------------------- */
+
+    makeInfiniteScroll($('#favorites_carousel'));
+    // Rely on the globally delegated click handlers for `.character_select` and
+    // `.group_select` elements defined by SillyTavern itself. Adding our own
+    // handler here would invoke `selectCharacterById` / `openGroupById` **twice**
+    // (once via the delegated handler, once via this extension), which is what
+    // caused the duplicated-message bug when switching between chats of very
+    // different lengths. Therefore we merely ensure any stale handler of ours
+    // is removed.
+    container.find('.avatar').off('click.carousel');
 
     const $imgs = $('#favorites_carousel img');
     $imgs.off('load.updateArrow').on('load.updateArrow', setupFavoritesCarousel);
     setupFavoritesCarousel();
 
-    function restoreScrollPosition() {
-        favoritesCarouselRestoring = true;
-        const maxScroll = $carouselEl[0].scrollWidth - $carouselEl.innerWidth();
-        const restored = maxScroll > 0 ? Math.round(prevRatio * maxScroll) : 0;
-        $carouselEl.scrollLeft(restored);
-        $carouselEl.trigger('scroll');
-        favoritesCarouselRestoring = false;
-    }
-
-    setTimeout(restoreScrollPosition, 0);
+    // For infinite scrolling we reset the scroll position inside
+    // makeInfiniteScroll(), so we no longer need to restore the previous ratio.
 
     let attempts = 0;
     const renderCheckInterval = setInterval(() => {
@@ -119,6 +113,58 @@ function favsToHotswap() {
         }
         attempts++;
     }, 100);
+}
+
+/**
+ * Duplicates the carousel items to the left and right so that scrolling can
+ * wrap seamlessly. When the user scrolls past one copy, we jump the scroll
+ * position back by exactly one set width so they never notice the boundary.
+ *
+ * @param {JQuery<HTMLElement>} $carousel jQuery element for the carousel
+ */
+function makeInfiniteScroll($carousel) {
+    if ($carousel.length === 0) return;
+
+    // Remove any previous clones to avoid exponential growth after rebuilds
+    $carousel.children('.inf_clone').remove();
+
+    const $items = $carousel.children().not('.inf_clone');
+    const itemCount = $items.length;
+    if (itemCount === 0) return;
+
+    // Clone one full set and prepend/append
+    const prependClones = $items.clone().addClass('inf_clone');
+    const appendClones  = $items.clone().addClass('inf_clone');
+    $carousel.prepend(prependClones);
+    $carousel.append(appendClones);
+
+    // Calculate width of one logical set (all originals)
+    let setWidth = 0;
+    $items.each(function() {
+        setWidth += $(this).outerWidth(true);
+    });
+
+    // Position scroll at the start of the original set
+    $carousel.scrollLeft(setWidth);
+
+    // Debounce scroll correction so we aren't too aggressive
+    let ticking = false;
+    function onScroll() {
+        if (ticking) return;
+        ticking = true;
+        window.requestAnimationFrame(() => {
+            const left = $carousel[0].scrollLeft;
+            if (left < setWidth * 0.5) {
+                $carousel[0].scrollLeft = left + setWidth;
+            } else if (left > setWidth * 1.5) {
+                $carousel[0].scrollLeft = left - setWidth;
+            }
+            ticking = false;
+        });
+    }
+
+    // Replace previous infinite scroll handler, if any
+    $carousel.off('scroll.infinite').on('scroll.infinite', onScroll);
 }
 
 function setupFavoritesCarousel() {
@@ -258,7 +304,7 @@ function buildExtensionAvatarList($container, entries) {
 
         if (isGroup) {
             $div.addClass('avatar_collage group_select');
-            $div.attr('data-gid', id);
+            $div.attr('data-grid', id);
             $div.data('type', 'group');
 
             if (Array.isArray(item.members)) {
